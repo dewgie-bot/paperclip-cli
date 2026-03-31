@@ -784,6 +784,102 @@ def test_routine_commands_cover_tables_validation_and_triggers(runner):
     assert "hmac" in triggers_result.output
 
 
+@rsps.activate
+def test_project_json_paths_and_delete_confirmation(runner):
+    rsps.add(rsps.GET, f"{BASE_URL}/api/companies/co1/projects", json={"projects": [{"id": "p1", "name": "Roadmap"}]})
+    rsps.add(rsps.POST, f"{BASE_URL}/api/companies/co1/projects", json={"id": "p2", "name": "Platform"}, status=201)
+    rsps.add(rsps.GET, f"{BASE_URL}/api/projects/p1", json={"id": "p1", "name": "Roadmap"})
+    rsps.add(rsps.PATCH, f"{BASE_URL}/api/projects/p1", json={"id": "p1", "name": "Updated"})
+    rsps.add(rsps.PATCH, f"{BASE_URL}/api/projects/p1", json={"id": "p1", "archivedAt": "2026-03-31T00:00:00.000Z"})
+    rsps.add(rsps.PATCH, f"{BASE_URL}/api/projects/p1", json={"id": "p1", "archivedAt": "2026-03-31T00:00:00.000Z"})
+    rsps.add(rsps.PATCH, f"{BASE_URL}/api/projects/p1", json={"id": "p1", "archivedAt": None})
+
+    list_result = run_cli(runner, "project", "list", "--company", "co1", "--json")
+    assert list_result.exit_code == 0
+    assert json.loads(list_result.output)[0]["id"] == "p1"
+
+    create_result = run_cli(runner, "project", "create", "--company", "co1", "--name", "Platform", "--json")
+    assert create_result.exit_code == 0
+    assert json.loads(create_result.output)["id"] == "p2"
+
+    get_result = run_cli(runner, "project", "get", "p1", "--json")
+    assert get_result.exit_code == 0
+    assert json.loads(get_result.output)["name"] == "Roadmap"
+
+    update_result = run_cli(runner, "project", "update", "p1", "--name", "Updated", "--json")
+    assert update_result.exit_code == 0
+    assert json.loads(update_result.output)["name"] == "Updated"
+
+    delete_result = run_cli(runner, "project", "delete", "p1", input="y\n")
+    assert delete_result.exit_code == 0
+    assert "Archived project p1" in delete_result.output
+
+    archive_result = run_cli(runner, "project", "archive", "p1", "--json")
+    assert archive_result.exit_code == 0
+    assert json.loads(archive_result.output)["id"] == "p1"
+
+    unarchive_result = run_cli(runner, "project", "unarchive", "p1", "--json")
+    assert unarchive_result.exit_code == 0
+    assert json.loads(unarchive_result.output)["archivedAt"] is None
+
+
+@rsps.activate
+def test_routine_json_paths_and_empty_runs(runner):
+    rsps.add(rsps.GET, f"{BASE_URL}/api/companies/co1/routines", json={"routines": [{"id": "r1", "title": "Daily sync"}]})
+    rsps.add(rsps.POST, f"{BASE_URL}/api/companies/co1/routines", json={"id": "r2", "title": "Reporter"}, status=201)
+    rsps.add(rsps.GET, f"{BASE_URL}/api/routines/r1", json={"id": "r1", "title": "Daily sync"})
+    rsps.add(rsps.PATCH, f"{BASE_URL}/api/routines/r1", json={"id": "r1", "title": "Updated"})
+    rsps.add(rsps.POST, f"{BASE_URL}/api/routines/r1/run", json={"runId": "run-1"})
+    rsps.add(rsps.GET, f"{BASE_URL}/api/routines/r1/runs", json={"runs": [{"id": "run-1", "status": "success"}]})
+    rsps.add(rsps.GET, f"{BASE_URL}/api/routines/r1/runs", json={"runs": []})
+    rsps.add(rsps.GET, f"{BASE_URL}/api/routines/r1", json={"triggers": [{"id": "t1", "kind": "api"}]})
+
+    list_result = run_cli(runner, "routine", "list", "--company", "co1", "--json")
+    assert list_result.exit_code == 0
+    assert json.loads(list_result.output)[0]["id"] == "r1"
+
+    create_result = run_cli(
+        runner,
+        "routine",
+        "create",
+        "--company",
+        "co1",
+        "--project",
+        "p1",
+        "--name",
+        "Reporter",
+        "--assignee",
+        "a1",
+        "--json",
+    )
+    assert create_result.exit_code == 0
+    assert json.loads(create_result.output)["id"] == "r2"
+
+    get_result = run_cli(runner, "routine", "get", "r1", "--json")
+    assert get_result.exit_code == 0
+    assert json.loads(get_result.output)["title"] == "Daily sync"
+
+    update_result = run_cli(runner, "routine", "update", "r1", "--name", "Updated", "--json")
+    assert update_result.exit_code == 0
+    assert json.loads(update_result.output)["title"] == "Updated"
+
+    run_result = run_cli(runner, "routine", "run", "r1", "--json")
+    assert run_result.exit_code == 0
+    assert json.loads(run_result.output)["runId"] == "run-1"
+
+    runs_json_result = run_cli(runner, "routine", "runs", "r1", "--json")
+    assert runs_json_result.exit_code == 0
+    assert json.loads(runs_json_result.output)[0]["id"] == "run-1"
+
+    runs_empty_result = run_cli(runner, "routine", "runs", "r1")
+    assert runs_empty_result.exit_code == 0
+    assert "No runs found." in runs_empty_result.output
+
+    triggers_result = run_cli(runner, "routine", "triggers", "r1", "--json")
+    assert triggers_result.exit_code == 0
+    assert json.loads(triggers_result.output)[0]["kind"] == "api"
+
+
 ERROR_CASES = [
     (["company", "list"], rsps.GET, f"{BASE_URL}/api/companies"),
     (["company", "create", "--name", "Acme"], rsps.POST, f"{BASE_URL}/api/companies"),
